@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Stylised leaf / sprout icon representing fertility & nutrition -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Outer leaf -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,18 C54,18 78,28 78,52 C78,68 66,78 54,80 C42,78 30,68 30,52 C30,28 54,18 54,18 Z" />
+
+    <!-- Inner leaf highlight -->
+    <path
+        android:fillColor="#A5D6A7"
+        android:pathData="M54,24 C54,24 72,32 72,52 C72,64 63,72 54,74 C45,72 36,64 36,52 C36,32 54,24 54,24 Z" />
+
+    <!-- Stem -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:fillColor="#00000000"
+        android:pathData="M54,80 L54,92" />
+
+    <!-- Small sprout left -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.5"
+        android:fillColor="#00000000"
+        android:pathData="M54,86 C54,86 46,82 43,76" />
+
+    <!-- Small sprout right -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.5"
+        android:fillColor="#00000000"
+        android:pathData="M54,88 C54,88 62,84 65,78" />
+
+    <!-- Center vein -->
+    <path
+        android:strokeColor="#1B5E20"
+        android:strokeWidth="1.5"
+        android:fillColor="#00000000"
+        android:pathData="M54,28 L54,72" />
+</vector>

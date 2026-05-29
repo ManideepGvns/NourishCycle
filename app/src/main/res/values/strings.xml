@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NourishCycle</string>
+    <string name="good_morning">Good Morning</string>
+    <string name="good_afternoon">Good Afternoon</string>
+    <string name="good_evening">Good Evening</string>
+    <string name="tagline">Your Fertility Wellness Journey</string>
+    <string name="insights">Insights</string>
+    <string name="settings">Settings</string>
+    <string name="cycle_start_date">Cycle Start Date</string>
+    <string name="not_enough_data">Keep going! Complete meals to unlock insights.</string>
+    <string name="today">Today</string>
+    <string name="best_day">Best Day</string>
+    <string name="streak">Streak</string>
+    <string name="weekly_progress">Weekly Progress</string>
+</resources>
