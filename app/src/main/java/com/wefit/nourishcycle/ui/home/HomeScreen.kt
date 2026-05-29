@@ -13,7 +13,6 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,7 +30,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -53,6 +51,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
@@ -173,13 +172,11 @@ fun HomeScreen(
                 }
             }
 
-            // ── Day chip selector ────────────────────────────────────
+            // ── Day chip selector ─ all 7 chips fit in one row via weight ──
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(vertical = 4.dp)
             ) {
                 DietPlanData.days.forEachIndexed { index, day ->
                     val isSelected = pagerState.currentPage == index ||
@@ -201,14 +198,22 @@ fun HomeScreen(
                         label = "chipBg$index"
                     )
 
-                    // Derive the calendar day-of-month for this chip from the loaded dates
-                    val dateLabel = uiState.cycleDates.getOrElse(index) { "" }
-                        .takeIf { it.length == 10 }     // "yyyy-MM-dd"
-                        ?.let { it.substring(8) }       // extract "dd"
-                        ?: ""
+                    // Build "30 May" style label from "yyyy-MM-dd"
+                    val monthNames = listOf(
+                        "Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"
+                    )
+                    val rawDate = uiState.cycleDates.getOrElse(index) { "" }
+                    val dateLabel = if (rawDate.length == 10) {
+                        val day = rawDate.substring(8)
+                        val mon = rawDate.substring(5, 7).toIntOrNull()
+                            ?.let { monthNames.getOrElse(it - 1) { "" } } ?: ""
+                        "$day $mon"
+                    } else ""
 
+                    // weight(1f) gives each of the 7 chips an equal 1/7 of the row width
                     Box(
                         modifier = Modifier
+                            .weight(1f)
                             .clip(RoundedCornerShape(50))
                             .background(chipBg)
                             .clickable(
@@ -219,7 +224,7 @@ fun HomeScreen(
                                     pagerState.animateScrollToPage(index)
                                 }
                             }
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                            .padding(vertical = 8.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -237,7 +242,6 @@ fun HomeScreen(
                                     color = textColor.copy(alpha = 0.75f)
                                 )
                             }
-                            // Active underline drawn inside chip
                             Box(
                                 Modifier
                                     .padding(top = 3.dp)
@@ -256,7 +260,12 @@ fun HomeScreen(
             // Layout: 80% main + 5% left peek + 5% right peek + 5%+5% gaps = 100%
             //   contentPadding = 10% each side → page width = screenWidth * 80%
             //   pageSpacing    =  5% of screen → gap between neighbour peek and main card
-            //   visible neighbour = contentPadding - pageSpacing = 10% - 5% = 5% ✓
+            //   visible neighbour peek = contentPadding − pageSpacing = 10% − 5% = 5% ✓
+            //
+            // transformOrigin fix: scale neighbours from their VISIBLE edge, not the centre.
+            //   Left neighbour  (rawOffset > 0) → visible edge is its RIGHT  → pivotX = 1f
+            //   Right neighbour (rawOffset < 0) → visible edge is its LEFT   → pivotX = 0f
+            //   This prevents the scale from pulling content away from the peek area.
             HorizontalPager(
                 state = pagerState,
                 contentPadding = PaddingValues(horizontal = pagerContentPadding),
@@ -272,18 +281,22 @@ fun HomeScreen(
                 val completedSlots = uiState.completions[dateStr] ?: emptySet()
                 val isSettled = pagerState.settledPage == pageIndex
 
-                // Fractional offset from the currently settled page (0 = this page is focused)
-                val pageOffset = ((pagerState.currentPage - pageIndex).toFloat() +
-                        pagerState.currentPageOffsetFraction).absoluteValue
+                // Signed offset: positive = this page is to the LEFT of current, negative = to the RIGHT
+                val rawOffset = (pagerState.currentPage - pageIndex).toFloat() +
+                        pagerState.currentPageOffsetFraction
+                val pageOffset = rawOffset.absoluteValue.coerceIn(0f, 1f)
 
-                val scale = lerp(start = 0.84f, stop = 1f, fraction = 1f - pageOffset.coerceIn(0f, 1f))
-                val contentAlpha = lerp(start = 0.55f, stop = 1f, fraction = 1f - pageOffset.coerceIn(0f, 1f))
+                val scale = lerp(start = 0.92f, stop = 1f, fraction = 1f - pageOffset)
+                val contentAlpha = lerp(start = 0.75f, stop = 1f, fraction = 1f - pageOffset)
+                // Pivot at the edge closest to the viewer so the peek area shows real content
+                val pivotX = if (rawOffset > 0f) 1f else 0f
 
                 Box(
                     modifier = Modifier.graphicsLayer {
                         scaleX = scale
                         scaleY = scale
                         alpha = contentAlpha
+                        transformOrigin = TransformOrigin(pivotX, 0.5f)
                     }
                 ) {
                     DayPlanPage(

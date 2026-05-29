@@ -69,7 +69,7 @@ fun DayPlanPage(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
+            .padding(horizontal = 8.dp)
     ) {
         Spacer(Modifier.height(8.dp))
 
