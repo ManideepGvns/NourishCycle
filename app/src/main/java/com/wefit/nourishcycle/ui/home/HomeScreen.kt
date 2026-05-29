@@ -54,6 +54,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
@@ -95,9 +96,12 @@ fun HomeScreen(
         pageCount = { 7 }
     )
 
-    // Sync pager to todayPageIndex when it loads asynchronously (L3 fix):
-    // initialPage is only read once, so we need a LaunchedEffect to scroll after data loads.
-    LaunchedEffect(uiState.todayPageIndex) {
+    // Sync pager to todayPageIndex when data finishes loading.
+    // Key on both isLoading AND todayPageIndex: if today is Monday (index 0),
+    // todayPageIndex doesn't change from the initial value of 0, so keying on
+    // todayPageIndex alone would not re-run the effect. isLoading flips true→false
+    // on every load, guaranteeing the scroll always fires once data is ready.
+    LaunchedEffect(uiState.isLoading, uiState.todayPageIndex) {
         if (!uiState.isLoading) {
             pagerState.scrollToPage(uiState.todayPageIndex)
         }
@@ -115,6 +119,11 @@ fun HomeScreen(
             fabScale.animateTo(1f, spring(stiffness = 500f))
         }
     }
+
+    // Dock-magnification sizing: 80% main page, 5% each side visible, 5% each gap
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val pagerContentPadding = screenWidth * 0.10f   // (100% - 80%) / 2 = 10% each side
+    val pagerPageSpacing   = screenWidth * 0.05f   // gap between pages = 5%
 
     Box(modifier = Modifier.fillMaxSize()) {
         // ── Background gradient ──────────────────────────────────────
@@ -192,6 +201,12 @@ fun HomeScreen(
                         label = "chipBg$index"
                     )
 
+                    // Derive the calendar day-of-month for this chip from the loaded dates
+                    val dateLabel = uiState.cycleDates.getOrElse(index) { "" }
+                        .takeIf { it.length == 10 }     // "yyyy-MM-dd"
+                        ?.let { it.substring(8) }       // extract "dd"
+                        ?: ""
+
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(50))
@@ -215,6 +230,13 @@ fun HomeScreen(
                                 ),
                                 color = textColor
                             )
+                            if (dateLabel.isNotEmpty()) {
+                                Text(
+                                    text = dateLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = textColor.copy(alpha = 0.75f)
+                                )
+                            }
                             // Active underline drawn inside chip
                             Box(
                                 Modifier
@@ -231,14 +253,14 @@ fun HomeScreen(
             Spacer(Modifier.height(12.dp))
 
             // ── Day pager — dock-magnification style ─────────────────
-            // contentPadding exposes ~56dp of the neighbour pages on each side.
-            // pageSpacing adds breathing room between cards.
-            // graphicsLayer scales the current page to 1f and neighbours to 0.84f,
-            // interpolated smoothly as the user drags — similar to macOS Dock magnification.
+            // Layout: 80% main + 5% left peek + 5% right peek + 5%+5% gaps = 100%
+            //   contentPadding = 10% each side → page width = screenWidth * 80%
+            //   pageSpacing    =  5% of screen → gap between neighbour peek and main card
+            //   visible neighbour = contentPadding - pageSpacing = 10% - 5% = 5% ✓
             HorizontalPager(
                 state = pagerState,
-                contentPadding = PaddingValues(horizontal = 52.dp),
-                pageSpacing = 12.dp,
+                contentPadding = PaddingValues(horizontal = pagerContentPadding),
+                pageSpacing = pagerPageSpacing,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()

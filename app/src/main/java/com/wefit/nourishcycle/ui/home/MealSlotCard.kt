@@ -85,11 +85,8 @@ fun MealSlotCard(
                     modifier = Modifier.weight(1f)
                 )
 
-                // Animated checkbox
-                AnimatedCheckbox(
-                    isChecked = isCompleted,
-                    onToggle = onToggle
-                )
+                // Animated checkbox — visual only; tap handled by the card
+                AnimatedCheckbox(isChecked = isCompleted)
             }
 
             if (slot.options.isNotEmpty()) {

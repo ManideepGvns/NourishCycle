@@ -4,8 +4,6 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,10 +23,13 @@ import com.wefit.nourishcycle.ui.theme.AccentGreen
 import com.wefit.nourishcycle.ui.theme.GlassBorder
 import kotlinx.coroutines.launch
 
+/**
+ * Visual-only animated checkbox. Click handling is on the parent card,
+ * not here — having two overlapping clickable modifiers caused double-toggles.
+ */
 @Composable
 fun AnimatedCheckbox(
     isChecked: Boolean,
-    onToggle: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     // Scale animation: bouncy on check, gentle on uncheck
@@ -70,10 +71,6 @@ fun AnimatedCheckbox(
                 scaleX = scale.value
                 scaleY = scale.value
             }
-            .clickable(
-                indication = null,
-                interactionSource = remember { MutableInteractionSource() }
-            ) { onToggle() }
     ) {
         val cornerRadius = CornerRadius(6.dp.toPx())
         val strokeWidth = 2.dp.toPx()
