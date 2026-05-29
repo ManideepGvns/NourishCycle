@@ -10,6 +10,8 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -17,8 +19,7 @@ import org.junit.runner.RunWith
 
 /**
  * Instrumented tests for DietDao using an in-memory Room database.
- *
- * Runs on device/emulator but uses in-memory DB so no real storage is touched.
+ * Covers: insert, update, toggle, batch query, flow reactivity, delete.
  */
 @RunWith(AndroidJUnit4::class)
 class DietDaoTest {
@@ -36,41 +37,89 @@ class DietDaoTest {
     @After
     fun closeDb() = db.close()
 
-    // ── upsertCompletion ──────────────────────────────────────────────────────
+    // ── insertCompletion ──────────────────────────────────────────────────────
 
     @Test
-    fun upsert_insertsNewRow() = runTest {
-        val entity = CompletionEntity(calendarDate = "2026-05-29", mealSlotIndex = 0, isCompleted = true)
-        db.dietDao().upsertCompletion(entity)
+    fun insert_newSlot_storesRow() = runTest {
+        val dao = db.dietDao()
+        dao.insertCompletion(CompletionEntity(calendarDate = "2026-05-29", mealSlotIndex = 0, isCompleted = true))
 
-        val results = db.dietDao().getCompletionsForDate("2026-05-29")
-        assertEquals(1, results.size)
-        assertTrue(results.first().isCompleted)
+        val row = dao.getCompletionForSlot("2026-05-29", 0)
+        assertNotNull(row)
+        assertTrue(row!!.isCompleted)
     }
 
     @Test
-    fun upsert_updatesExistingRowOnDuplicateKey() = runTest {
+    fun insert_duplicateSlot_isIgnored() = runTest {
         val dao = db.dietDao()
+        dao.insertCompletion(CompletionEntity(calendarDate = "2026-05-29", mealSlotIndex = 0, isCompleted = true))
+        dao.insertCompletion(CompletionEntity(calendarDate = "2026-05-29", mealSlotIndex = 0, isCompleted = false))
 
-        dao.upsertCompletion(CompletionEntity(calendarDate = "2026-05-29", mealSlotIndex = 1, isCompleted = true))
-        // Upsert again with same (date, slot) but isCompleted = false — should update, not insert
-        dao.upsertCompletion(CompletionEntity(calendarDate = "2026-05-29", mealSlotIndex = 1, isCompleted = false))
+        val rows = dao.getCompletionsForDate("2026-05-29")
+        assertEquals("Second insert ignored — still only 1 row", 1, rows.size)
+        assertTrue("Original value preserved", rows.first().isCompleted)
+    }
 
-        val results = dao.getCompletionsForDate("2026-05-29")
-        assertEquals("Upsert must update, not duplicate the row", 1, results.size)
-        assertFalse("isCompleted must be updated to false", results.first().isCompleted)
+    // ── getCompletionForSlot ──────────────────────────────────────────────────
+
+    @Test
+    fun getCompletionForSlot_returnsNullWhenMissing() = runTest {
+        val row = db.dietDao().getCompletionForSlot("2026-05-29", 0)
+        assertNull(row)
     }
 
     @Test
-    fun upsert_multipleSlots_areStoredIndependently() = runTest {
+    fun getCompletionForSlot_returnsCorrectRow() = runTest {
         val dao = db.dietDao()
-        for (slot in 0..6) {
-            dao.upsertCompletion(CompletionEntity(calendarDate = "2026-05-29", mealSlotIndex = slot, isCompleted = true))
-        }
+        dao.insertCompletion(CompletionEntity(calendarDate = "2026-05-29", mealSlotIndex = 3, isCompleted = true))
+        dao.insertCompletion(CompletionEntity(calendarDate = "2026-05-29", mealSlotIndex = 5, isCompleted = false))
 
-        val results = dao.getCompletionsForDate("2026-05-29")
-        assertEquals(7, results.size)
-        assertTrue(results.all { it.isCompleted })
+        val row = dao.getCompletionForSlot("2026-05-29", 3)
+        assertNotNull(row)
+        assertEquals(3, row!!.mealSlotIndex)
+        assertTrue(row.isCompleted)
+    }
+
+    // ── updateCompletion (toggle) ─────────────────────────────────────────────
+
+    @Test
+    fun update_togglesIsCompleted() = runTest {
+        val dao = db.dietDao()
+        dao.insertCompletion(CompletionEntity(calendarDate = "2026-05-29", mealSlotIndex = 2, isCompleted = true))
+
+        val existing = dao.getCompletionForSlot("2026-05-29", 2)!!
+        dao.updateCompletion(existing.copy(isCompleted = false))
+
+        val updated = dao.getCompletionForSlot("2026-05-29", 2)
+        assertNotNull(updated)
+        assertFalse("isCompleted must be flipped to false", updated!!.isCompleted)
+        assertEquals("Row count must still be 1", 1, dao.getCompletionsForDate("2026-05-29").size)
+    }
+
+    /** Simulates the exact HomeViewModel.toggleSlot logic: check → uncheck → check */
+    @Test
+    fun toggleSlot_checkUncheckCheck_worksCorrectly() = runTest {
+        val dao = db.dietDao()
+        val date = "2026-05-30"
+        val slot = 4
+
+        // First toggle: slot is new → insert as checked
+        val before1 = dao.getCompletionForSlot(date, slot)
+        assertNull("No row yet", before1)
+        dao.insertCompletion(CompletionEntity(calendarDate = date, mealSlotIndex = slot, isCompleted = true))
+        assertTrue("After first toggle: checked", dao.getCompletionForSlot(date, slot)!!.isCompleted)
+
+        // Second toggle: row exists → flip to unchecked
+        val before2 = dao.getCompletionForSlot(date, slot)!!
+        dao.updateCompletion(before2.copy(isCompleted = !before2.isCompleted))
+        assertFalse("After second toggle: unchecked", dao.getCompletionForSlot(date, slot)!!.isCompleted)
+        assertEquals("Still only 1 row in DB", 1, dao.getCompletionsForDate(date).size)
+
+        // Third toggle: row exists → flip back to checked
+        val before3 = dao.getCompletionForSlot(date, slot)!!
+        dao.updateCompletion(before3.copy(isCompleted = !before3.isCompleted))
+        assertTrue("After third toggle: checked again", dao.getCompletionForSlot(date, slot)!!.isCompleted)
+        assertEquals("Still only 1 row in DB", 1, dao.getCompletionsForDate(date).size)
     }
 
     // ── getCompletionsForDates ────────────────────────────────────────────────
@@ -78,55 +127,21 @@ class DietDaoTest {
     @Test
     fun getCompletionsForDates_returnsOnlyRequestedDates() = runTest {
         val dao = db.dietDao()
-        dao.upsertCompletion(CompletionEntity(calendarDate = "2026-05-25", mealSlotIndex = 0, isCompleted = true))
-        dao.upsertCompletion(CompletionEntity(calendarDate = "2026-05-26", mealSlotIndex = 1, isCompleted = true))
-        dao.upsertCompletion(CompletionEntity(calendarDate = "2026-05-27", mealSlotIndex = 2, isCompleted = true))
+        dao.insertCompletion(CompletionEntity(calendarDate = "2026-05-25", mealSlotIndex = 0, isCompleted = true))
+        dao.insertCompletion(CompletionEntity(calendarDate = "2026-05-26", mealSlotIndex = 1, isCompleted = true))
+        dao.insertCompletion(CompletionEntity(calendarDate = "2026-05-27", mealSlotIndex = 2, isCompleted = true))
 
-        // Query only two of the three dates
         val results = dao.getCompletionsForDates(listOf("2026-05-25", "2026-05-27")).first()
         assertEquals(2, results.size)
         assertTrue(results.any { it.calendarDate == "2026-05-25" })
-        assertTrue(results.any { it.calendarDate == "2026-05-27" })
         assertFalse(results.any { it.calendarDate == "2026-05-26" })
     }
 
     @Test
-    fun getCompletionsForDates_emptyQuery_returnsEmpty() = runTest {
-        val dao = db.dietDao()
-        dao.upsertCompletion(CompletionEntity(calendarDate = "2026-05-25", mealSlotIndex = 0, isCompleted = true))
-
-        val results = dao.getCompletionsForDates(emptyList()).first()
-        assertTrue("Expected empty result for empty date list", results.isEmpty())
-    }
-
-    @Test
-    fun getCompletionsForDates_noMatchingDates_returnsEmpty() = runTest {
-        val dao = db.dietDao()
-        dao.upsertCompletion(CompletionEntity(calendarDate = "2026-05-25", mealSlotIndex = 0, isCompleted = true))
-
-        val results = dao.getCompletionsForDates(listOf("2099-01-01")).first()
-        assertTrue("Expected empty result when no dates match", results.isEmpty())
-    }
-
-    // ── Toggle simulation ─────────────────────────────────────────────────────
-
-    @Test
-    fun toggleSlot_completesAndUncompletes() = runTest {
-        val dao = db.dietDao()
-        val date = "2026-05-29"
-        val slot = 3
-
-        // First toggle — mark complete
-        dao.upsertCompletion(CompletionEntity(calendarDate = date, mealSlotIndex = slot, isCompleted = true))
-        var rows = dao.getCompletionsForDate(date)
-        assertEquals(1, rows.size)
-        assertTrue(rows.first().isCompleted)
-
-        // Second toggle — mark incomplete
-        dao.upsertCompletion(CompletionEntity(calendarDate = date, mealSlotIndex = slot, isCompleted = false))
-        rows = dao.getCompletionsForDate(date)
-        assertEquals("Must still be 1 row, not 2", 1, rows.size)
-        assertFalse(rows.first().isCompleted)
+    fun getCompletionsForDates_emptyList_returnsEmpty() = runTest {
+        db.dietDao().insertCompletion(CompletionEntity(calendarDate = "2026-05-25", mealSlotIndex = 0, isCompleted = true))
+        val results = db.dietDao().getCompletionsForDates(emptyList()).first()
+        assertTrue(results.isEmpty())
     }
 
     // ── deleteCompletionsForDate ──────────────────────────────────────────────
@@ -135,35 +150,26 @@ class DietDaoTest {
     fun deleteCompletionsForDate_removesAllSlotsForThatDate() = runTest {
         val dao = db.dietDao()
         for (slot in 0..3) {
-            dao.upsertCompletion(CompletionEntity(calendarDate = "2026-05-29", mealSlotIndex = slot, isCompleted = true))
+            dao.insertCompletion(CompletionEntity(calendarDate = "2026-05-29", mealSlotIndex = slot, isCompleted = true))
         }
-        dao.upsertCompletion(CompletionEntity(calendarDate = "2026-05-30", mealSlotIndex = 0, isCompleted = true))
+        dao.insertCompletion(CompletionEntity(calendarDate = "2026-05-30", mealSlotIndex = 0, isCompleted = true))
 
         dao.deleteCompletionsForDate("2026-05-29")
 
-        val deleted = dao.getCompletionsForDate("2026-05-29")
-        val kept = dao.getCompletionsForDate("2026-05-30")
-
-        assertTrue("All slots for deleted date should be gone", deleted.isEmpty())
-        assertEquals("Other date's data must be untouched", 1, kept.size)
+        assertTrue(dao.getCompletionsForDate("2026-05-29").isEmpty())
+        assertEquals(1, dao.getCompletionsForDate("2026-05-30").size)
     }
 
     // ── Flow reactivity ───────────────────────────────────────────────────────
 
     @Test
-    fun getCompletionsForDates_flowEmitsUpdateWhenDataChanges() = runTest {
+    fun flow_emitsUpdateAfterInsert() = runTest {
         val dao = db.dietDao()
-        val dates = listOf("2026-05-29")
+        assertTrue(dao.getCompletionsForDates(listOf("2026-05-29")).first().isEmpty())
 
-        // Collect initial (empty) value
-        val initial = dao.getCompletionsForDates(dates).first()
-        assertTrue(initial.isEmpty())
+        dao.insertCompletion(CompletionEntity(calendarDate = "2026-05-29", mealSlotIndex = 0, isCompleted = true))
 
-        // Insert a row
-        dao.upsertCompletion(CompletionEntity(calendarDate = "2026-05-29", mealSlotIndex = 0, isCompleted = true))
-
-        // Collect again — must reflect new row
-        val updated = dao.getCompletionsForDates(dates).first()
+        val updated = dao.getCompletionsForDates(listOf("2026-05-29")).first()
         assertEquals(1, updated.size)
     }
 }

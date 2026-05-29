@@ -51,7 +51,15 @@ sealed class InsightsUiState {
         val streak: StreakState,
         val bestDay: BestDayState,
         val trend: TrendState,
-        val dataHash: Int
+        val dataHash: Int,
+        // ── New fields ──────────────────────────────────────────────────────────
+        val todayPct: Int,                          // today's completion 0-100
+        val todayCompleted: Int,                    // meals done today (0-7)
+        val consistencyScore: Int,                  // % of past slots that were completed
+        val mealHeatmap: List<List<Boolean>>,       // [dateIndex][slotIndex] = completed
+        val bestSlotIndex: Int,                     // slot with highest completion rate (-1 = no data)
+        val worstSlotIndex: Int,                    // slot with lowest completion rate (-1 = no data)
+        val mealSlotRates: List<Float>              // per-slot completion rate [0f..1f] across past days
     ) : InsightsUiState()
     data class Error(val message: String) : InsightsUiState()
 }
@@ -178,6 +186,34 @@ class InsightsViewModel(application: Application) : AndroidViewModel(application
 
         val dataHash = dailyCompletions.map { it.pct }.hashCode()
 
+        // ── Today's progress ─────────────────────────────────────────
+        val todayCompleted = completedMap[todayStr]?.size ?: 0
+        val todayPct = todayCompleted * 100 / 7
+
+        // ── Consistency score ─────────────────────────────────────────
+        // % of possible slots across ALL past days that were completed
+        val totalPossibleSlots = pastDates.size * 7
+        val totalCompletedSlots = completedMap.entries
+            .filter { it.key in pastDates }
+            .sumOf { it.value.size }
+        val consistencyScore = if (totalPossibleSlots == 0) 0
+                               else totalCompletedSlots * 100 / totalPossibleSlots
+
+        // ── Meal heatmap [dateIndex][slotIndex] ──────────────────────
+        val mealHeatmap = dates.map { dateStr ->
+            (0..6).map { slotIndex ->
+                completedMap[dateStr]?.contains(slotIndex) == true
+            }
+        }
+
+        // ── Per-slot completion rates ─────────────────────────────────
+        val mealSlotRates = categoryCompletions   // already computed above
+
+        val bestSlotIndex = if (pastDates.isEmpty()) -1
+                            else mealSlotRates.indices.maxByOrNull { mealSlotRates[it] } ?: -1
+        val worstSlotIndex = if (pastDates.isEmpty()) -1
+                             else mealSlotRates.indices.minByOrNull { mealSlotRates[it] } ?: -1
+
         return InsightsUiState.Ready(
             dailyCompletions = dailyCompletions,
             categoryCompletions = categoryCompletions,
@@ -185,7 +221,14 @@ class InsightsViewModel(application: Application) : AndroidViewModel(application
             streak = StreakState(count = streakCount, todayIsActive = todayIsActive),
             bestDay = bestDay,
             trend = trend,
-            dataHash = dataHash
+            dataHash = dataHash,
+            todayPct = todayPct,
+            todayCompleted = todayCompleted,
+            consistencyScore = consistencyScore,
+            mealHeatmap = mealHeatmap,
+            bestSlotIndex = bestSlotIndex,
+            worstSlotIndex = worstSlotIndex,
+            mealSlotRates = mealSlotRates
         )
     }
 }

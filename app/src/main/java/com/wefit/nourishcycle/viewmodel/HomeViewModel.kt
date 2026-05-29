@@ -76,18 +76,29 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Toggles a meal slot. Guards against empty dateStr to prevent corrupt DB rows (R5). */
+    /**
+     * Toggles a meal slot.
+     *
+     * Previous implementation used @Upsert with an auto-generated primary key.
+     * @Upsert resolves conflicts by PRIMARY KEY only, so every call with id=0
+     * was treated as a new INSERT — the UNIQUE index then fired a REPLACE that
+     * deleted the old row and re-inserted, causing unreliable state.
+     *
+     * Fix: read the existing row directly from SQLite, then explicitly
+     * @Update it (flipping isCompleted) or @Insert it for the first tap.
+     * This preserves the row's id and makes the toggle 100% reliable.
+     */
     fun toggleSlot(date: String, slotIndex: Int) {
         if (date.isBlank()) return
         viewModelScope.launch(Dispatchers.IO) {
-            val currentlyCompleted = _uiState.value.completions[date]?.contains(slotIndex) == true
-            dao.upsertCompletion(
-                CompletionEntity(
-                    calendarDate = date,
-                    mealSlotIndex = slotIndex,
-                    isCompleted = !currentlyCompleted
+            val existing = dao.getCompletionForSlot(date, slotIndex)
+            if (existing != null) {
+                dao.updateCompletion(existing.copy(isCompleted = !existing.isCompleted))
+            } else {
+                dao.insertCompletion(
+                    CompletionEntity(calendarDate = date, mealSlotIndex = slotIndex, isCompleted = true)
                 )
-            )
+            }
         }
     }
 

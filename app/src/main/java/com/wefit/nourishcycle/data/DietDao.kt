@@ -1,8 +1,10 @@
 package com.wefit.nourishcycle.data
 
 import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import androidx.room.Upsert
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -10,19 +12,24 @@ interface DietDao {
 
     /**
      * Single batch query for up to 7 dates in a cycle window.
-     * Avoids combine() overflow (kotlinx.coroutines only has 5-arity combine()).
-     * Grouping and dayIndex computation happen in Kotlin at read time.
      */
     @Query("SELECT * FROM meal_completions WHERE calendarDate IN (:dates)")
     fun getCompletionsForDates(dates: List<String>): Flow<List<CompletionEntity>>
 
     /**
-     * Upsert: inserts if (calendarDate, mealSlotIndex) not present;
-     * replaces the row if the UNIQUE constraint fires.
-     * Requires Room 2.5+ — we use 2.7.1.
+     * Fetch a single completion row by its composite business key.
+     * Returns null when the slot has never been interacted with.
      */
-    @Upsert
-    suspend fun upsertCompletion(entity: CompletionEntity)
+    @Query("SELECT * FROM meal_completions WHERE calendarDate = :date AND mealSlotIndex = :slotIndex LIMIT 1")
+    suspend fun getCompletionForSlot(date: String, slotIndex: Int): CompletionEntity?
+
+    /** Update an existing row (preserves its auto-generated id). */
+    @Update
+    suspend fun updateCompletion(entity: CompletionEntity)
+
+    /** Insert a brand-new completion row (first time a slot is tapped). */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertCompletion(entity: CompletionEntity)
 
     /**
      * Convenience query to load all entries for a single date
