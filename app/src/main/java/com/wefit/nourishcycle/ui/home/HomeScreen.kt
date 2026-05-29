@@ -56,6 +56,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.wefit.nourishcycle.data.DietPlanData
@@ -119,10 +120,10 @@ fun HomeScreen(
         }
     }
 
-    // Dock-magnification sizing: 80% main page, 5% each side visible, 5% each gap
+    // Dock-magnification sizing: 80% main page, ~8% each side visible, ~2% each gap
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val pagerContentPadding = screenWidth * 0.10f   // (100% - 80%) / 2 = 10% each side
-    val pagerPageSpacing   = screenWidth * 0.05f   // gap between pages = 5%
+    val pagerPageSpacing   = screenWidth * 0.02f   // small gap → visible neighbour = 8%
 
     Box(modifier = Modifier.fillMaxSize()) {
         // ── Background gradient ──────────────────────────────────────
@@ -198,17 +199,16 @@ fun HomeScreen(
                         label = "chipBg$index"
                     )
 
-                    // Build "30 May" style label from "yyyy-MM-dd"
+                    // Extract "dd" and "Mon" separately from "yyyy-MM-dd"
                     val monthNames = listOf(
                         "Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"
                     )
                     val rawDate = uiState.cycleDates.getOrElse(index) { "" }
-                    val dateLabel = if (rawDate.length == 10) {
-                        val day = rawDate.substring(8)
-                        val mon = rawDate.substring(5, 7).toIntOrNull()
+                    val dayLabel = if (rawDate.length == 10) rawDate.substring(8) else ""
+                    val monLabel = if (rawDate.length == 10)
+                        rawDate.substring(5, 7).toIntOrNull()
                             ?.let { monthNames.getOrElse(it - 1) { "" } } ?: ""
-                        "$day $mon"
-                    } else ""
+                    else ""
 
                     // weight(1f) gives each of the 7 chips an equal 1/7 of the row width
                     Box(
@@ -231,21 +231,29 @@ fun HomeScreen(
                             Text(
                                 text = day.dayName.take(3),
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = 10.sp
                                 ),
                                 color = textColor
                             )
-                            if (dateLabel.isNotEmpty()) {
+                            if (dayLabel.isNotEmpty()) {
                                 Text(
-                                    text = dateLabel,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = textColor.copy(alpha = 0.75f)
+                                    text = dayLabel,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                    color = textColor.copy(alpha = 0.85f)
+                                )
+                            }
+                            if (monLabel.isNotEmpty()) {
+                                Text(
+                                    text = monLabel,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+                                    color = textColor.copy(alpha = 0.65f)
                                 )
                             }
                             Box(
                                 Modifier
-                                    .padding(top = 3.dp)
-                                    .width(16.dp)
+                                    .padding(top = 2.dp)
+                                    .width(14.dp)
                                     .height(2.dp)
                                     .background(borderColor, RoundedCornerShape(1.dp))
                             )
@@ -270,6 +278,7 @@ fun HomeScreen(
                 state = pagerState,
                 contentPadding = PaddingValues(horizontal = pagerContentPadding),
                 pageSpacing = pagerPageSpacing,
+                beyondViewportPageCount = 6,   // pre-compose all 7 pages so neighbours are visible instantly
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()

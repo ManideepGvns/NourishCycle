@@ -3,22 +3,23 @@ package com.wefit.nourishcycle.ui.home
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -32,27 +33,29 @@ import com.wefit.nourishcycle.ui.theme.AccentAmber
 import com.wefit.nourishcycle.ui.theme.LimeGreen
 import com.wefit.nourishcycle.ui.theme.OnSurface
 
+/**
+ * Purely a display component — click handling is owned by the parent Column in DayPlanPage
+ * to avoid nested-clickable double-toggle issues.
+ */
 @Composable
 fun MealSlotCard(
     slot: MealSlot,
     isCompleted: Boolean,
-    onToggle: () -> Unit,
+    isLocked: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val contentAlpha by animateFloatAsState(
-        targetValue = if (isCompleted) 0.5f else 1f,
+        targetValue = when {
+            isLocked    -> 0.45f
+            isCompleted -> 0.55f
+            else        -> 1f
+        },
         animationSpec = tween(300),
         label = "contentAlpha"
     )
 
     GlassTile(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(
-                indication = null,
-                interactionSource = remember { MutableInteractionSource() },
-                onClick = onToggle
-            ),
+        modifier = modifier.fillMaxWidth(),
         cornerRadius = 20.dp,
         contentPadding = 0.dp
     ) {
@@ -61,35 +64,42 @@ fun MealSlotCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                // Time badge pill
                 Surface(
-                    color = AccentAmber.copy(alpha = 0.25f),
+                    color = AccentAmber.copy(alpha = if (isLocked) 0.12f else 0.25f),
                     shape = RoundedCornerShape(50),
                 ) {
                     Text(
                         text = slot.time,
                         style = MaterialTheme.typography.labelSmall,
-                        color = AccentAmber,
+                        color = AccentAmber.copy(alpha = contentAlpha),
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
 
                 Spacer(Modifier.width(12.dp))
 
-                // Slot label (e.g. "Breakfast")
                 Text(
                     text = slot.label,
                     style = MaterialTheme.typography.titleMedium,
                     color = OnSurface.copy(alpha = contentAlpha),
-                    textDecoration = if (isCompleted) TextDecoration.LineThrough else TextDecoration.None,
+                    textDecoration = if (isCompleted && !isLocked) TextDecoration.LineThrough
+                                     else TextDecoration.None,
                     modifier = Modifier.weight(1f)
                 )
 
-                // Animated checkbox — visual only; tap handled by the card
-                AnimatedCheckbox(isChecked = isCompleted)
+                if (isLocked) {
+                    Icon(
+                        imageVector = Icons.Rounded.Lock,
+                        contentDescription = "Future day — locked",
+                        tint = OnSurface.copy(alpha = 0.3f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                } else {
+                    AnimatedCheckbox(isChecked = isCompleted)
+                }
             }
 
-            if (slot.options.isNotEmpty()) {
+            if (slot.options.isNotEmpty() && !isLocked) {
                 Spacer(Modifier.height(10.dp))
                 slot.options.forEach { option ->
                     Row(
@@ -114,7 +124,7 @@ fun MealSlotCard(
                 }
             }
 
-            if (slot.tip.isNotEmpty()) {
+            if (slot.tip.isNotEmpty() && !isLocked) {
                 Spacer(Modifier.height(6.dp))
                 Text(
                     text = "💡 ${slot.tip}",

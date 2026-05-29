@@ -4,10 +4,12 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -26,21 +28,29 @@ import androidx.compose.ui.unit.dp
 import com.wefit.nourishcycle.data.DietPlanData
 import com.wefit.nourishcycle.ui.components.DayPageSkeleton
 import kotlinx.coroutines.delay
+import java.time.LocalDate
 
 @Composable
 fun DayPlanPage(
-    pageIndex: Int,         // 0–6, position in the HorizontalPager
-    dayPlanIndex: Int,      // 0–6, index into DietPlanData.days
+    pageIndex: Int,
+    dayPlanIndex: Int,
     dateStr: String,
     completedSlots: Set<Int>,
     onToggle: (slotIndex: Int) -> Unit,
     isLoading: Boolean,
-    isSettled: Boolean,     // true when pagerState.settledPage == pageIndex
+    isSettled: Boolean,
     visitedPages: MutableSet<Int>,
     modifier: Modifier = Modifier
 ) {
     val dayPlan = DietPlanData.days[dayPlanIndex]
     val slots = dayPlan.slots
+
+    // Determine if this page is a future date — ticking is disabled for future days
+    val isFutureDay = remember(dateStr) {
+        if (dateStr.length == 10) {
+            runCatching { LocalDate.parse(dateStr).isAfter(LocalDate.now()) }.getOrElse { false }
+        } else false
+    }
 
     // Per-slot visibility state — stagger only on first visit
     val visible = remember { mutableStateListOf(*Array(slots.size) { false }) }
@@ -48,14 +58,12 @@ fun DayPlanPage(
     LaunchedEffect(pageIndex, isSettled) {
         if (isSettled && pageIndex !in visitedPages) {
             visitedPages.add(pageIndex)
-            // Reset visibility for fresh stagger
             for (i in visible.indices) visible[i] = false
             slots.forEachIndexed { index, _ ->
                 delay(index * 45L)
                 if (index < visible.size) visible[index] = true
             }
         } else if (pageIndex in visitedPages) {
-            // Previously visited: show all immediately
             for (i in visible.indices) visible[i] = true
         }
     }
@@ -81,24 +89,33 @@ fun DayPlanPage(
                     animationSpec = tween(350)
                 ) + fadeIn(animationSpec = tween(350))
             ) {
-                Column {
+                // Clickable wraps the card content — single tap target, no nested clickables.
+                // Future days are locked: clickable is disabled and card shows muted appearance.
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(
+                            enabled = !isFutureDay,
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { onToggle(slot.slotIndex) }
+                ) {
                     MealSlotCard(
                         slot = slot,
                         isCompleted = completedSlots.contains(slot.slotIndex),
-                        onToggle = { onToggle(slot.slotIndex) }
+                        isLocked = isFutureDay
                     )
                     Spacer(Modifier.height(12.dp))
                 }
             }
         }
 
-        // Progress footer
         val completedCount = completedSlots.size
         val total = slots.size
         if (completedCount > 0) {
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "$completedCount / $total meals completed today ✓",
+                text = "$completedCount / $total meals completed ✓",
                 style = MaterialTheme.typography.labelSmall,
                 color = Color.White.copy(alpha = 0.6f),
                 textAlign = TextAlign.Center,
