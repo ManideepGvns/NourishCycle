@@ -18,6 +18,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,27 +36,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BarChart
-import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,6 +56,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.lerp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.wefit.nourishcycle.data.DietPlanData
 import com.wefit.nourishcycle.ui.theme.GradientEnd
@@ -79,11 +71,8 @@ import com.wefit.nourishcycle.viewmodel.computeGreeting
 import com.wefit.nourishcycle.viewmodel.toDisplayString
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneId
+import kotlin.math.absoluteValue
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     onNavigateToInsights: () -> Unit,
@@ -127,10 +116,6 @@ fun HomeScreen(
         }
     }
 
-    // Settings bottom sheet state
-    var showDatePicker by remember { mutableStateOf(false) }
-    val bottomSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
     Box(modifier = Modifier.fillMaxSize()) {
         // ── Background gradient ──────────────────────────────────────
         Canvas(Modifier.fillMaxSize()) {
@@ -149,14 +134,11 @@ fun HomeScreen(
                 .statusBarsPadding()
         ) {
             // ── Top bar ─────────────────────────────────────────────
-            Row(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
             ) {
-                // Animated greeting
                 AnimatedContent(
                     targetState = greeting,
                     transitionSpec = {
@@ -179,15 +161,6 @@ fun HomeScreen(
                             color = Color.White.copy(alpha = 0.7f)
                         )
                     }
-                }
-
-                // Settings icon
-                IconButton(onClick = { showDatePicker = true }) {
-                    Icon(
-                        Icons.Rounded.Settings,
-                        contentDescription = "Settings",
-                        tint = Color.White.copy(alpha = 0.8f)
-                    )
                 }
             }
 
@@ -257,9 +230,15 @@ fun HomeScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            // ── Day pager ────────────────────────────────────────────
+            // ── Day pager — dock-magnification style ─────────────────
+            // contentPadding exposes ~56dp of the neighbour pages on each side.
+            // pageSpacing adds breathing room between cards.
+            // graphicsLayer scales the current page to 1f and neighbours to 0.84f,
+            // interpolated smoothly as the user drags — similar to macOS Dock magnification.
             HorizontalPager(
                 state = pagerState,
+                contentPadding = PaddingValues(horizontal = 52.dp),
+                pageSpacing = 12.dp,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
@@ -271,16 +250,31 @@ fun HomeScreen(
                 val completedSlots = uiState.completions[dateStr] ?: emptySet()
                 val isSettled = pagerState.settledPage == pageIndex
 
-                DayPlanPage(
-                    pageIndex = pageIndex,
-                    dayPlanIndex = dayPlanIndex,
-                    dateStr = dateStr,
-                    completedSlots = completedSlots,
-                    onToggle = { slotIndex -> viewModel.toggleSlot(dateStr, slotIndex) },
-                    isLoading = uiState.isLoading,
-                    isSettled = isSettled,
-                    visitedPages = visitedPages
-                )
+                // Fractional offset from the currently settled page (0 = this page is focused)
+                val pageOffset = ((pagerState.currentPage - pageIndex).toFloat() +
+                        pagerState.currentPageOffsetFraction).absoluteValue
+
+                val scale = lerp(start = 0.84f, stop = 1f, fraction = 1f - pageOffset.coerceIn(0f, 1f))
+                val contentAlpha = lerp(start = 0.55f, stop = 1f, fraction = 1f - pageOffset.coerceIn(0f, 1f))
+
+                Box(
+                    modifier = Modifier.graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        alpha = contentAlpha
+                    }
+                ) {
+                    DayPlanPage(
+                        pageIndex = pageIndex,
+                        dayPlanIndex = dayPlanIndex,
+                        dateStr = dateStr,
+                        completedSlots = completedSlots,
+                        onToggle = { slotIndex -> viewModel.toggleSlot(dateStr, slotIndex) },
+                        isLoading = uiState.isLoading,
+                        isSettled = isSettled,
+                        visitedPages = visitedPages
+                    )
+                }
             }
         }
 
@@ -303,48 +297,4 @@ fun HomeScreen(
         }
     }
 
-    // ── Cycle start date picker (ModalBottomSheet) ───────────────────
-    if (showDatePicker) {
-        val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = uiState.cycleStartDate
-                .atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        )
-        ModalBottomSheet(
-            onDismissRequest = { showDatePicker = false },
-            sheetState = bottomSheetState
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    "Set Cycle Start Date",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                // Calendar-only mode: showModeToggle=false avoids keyboard + API 28 issues
-                DatePicker(
-                    state = datePickerState,
-                    showModeToggle = false
-                )
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
-                    Spacer(Modifier.width(8.dp))
-                    TextButton(onClick = {
-                        datePickerState.selectedDateMillis?.let { millis ->
-                            val newDate = Instant.ofEpochMilli(millis)
-                                .atZone(ZoneId.systemDefault()).toLocalDate()
-                            viewModel.updateCycleStartDate(newDate)
-                        }
-                        showDatePicker = false
-                    }) { Text("Confirm") }
-                }
-            }
-        }
-    }
 }
